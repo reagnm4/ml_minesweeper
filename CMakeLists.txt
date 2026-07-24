@@ -24,6 +24,12 @@ target_include_directories(ms_engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 add_library(ms_solver solver/Solver.cpp)
 target_link_libraries(ms_solver PUBLIC ms_engine)
 
+add_library(ms_tensor tensor/Matrix.cpp)
+target_include_directories(ms_tensor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_library(ms_autograd autograd/Autograd.cpp autograd/GradCheck.cpp)
+target_link_libraries(ms_autograd PUBLIC ms_tensor)
+
 enable_testing()
 
 # Each gate is its own executable so it can be run and read in isolation.
@@ -33,8 +39,17 @@ function(ms_add_test name source)
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
-ms_add_test(test_engine     tests/test_engine.cpp     ms_engine)
-ms_add_test(gate0_baseline  tests/gate0_baseline.cpp  ms_solver)
+ms_add_test(test_engine      tests/test_engine.cpp      ms_engine)
+ms_add_test(gate0_baseline   tests/gate0_baseline.cpp   ms_solver)
+ms_add_test(gate1_gradcheck  tests/gate1_gradcheck.cpp  ms_autograd)
+
+# Dumps gradients for tests/oracle/compare_oracle.sh to diff against NumPy.
+# Not a test itself -- it prints numbers, the shell script judges them.
+add_executable(oracle_dump tests/oracle_dump.cpp)
+target_link_libraries(oracle_dump PRIVATE ms_autograd)
+add_test(NAME oracle_numpy_crosscheck
+         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/oracle/compare_oracle.sh
+                 $<TARGET_FILE:oracle_dump>)
 
 # ---------------------------------------------------------------------------
 # SFML game (unchanged in structure; see README for the bugs fixed in Board)
