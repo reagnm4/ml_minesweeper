@@ -31,7 +31,7 @@ GameWindow::GameWindow(unsigned int w, unsigned int h, const std::string& player
     board = std::make_unique<Board>(config.columns, config.rows, config.mines, &texManager);
     mineCountRemaining = config.mines;
     flagsPlaced = 0;
-    leaderboard = new Leaderboard("files/leaderboard.txt");
+    leaderboard = std::make_unique<Leaderboard>("files/leaderboard.txt");
 
     faceButton.setTexture(texManager.get("face_happy"));
     positionFaceButton();
@@ -165,8 +165,11 @@ void GameWindow::processEvents() {
 
             sf::Vector2i pos = sf::Mouse::getPosition(window);
 
-            int tileX = pos.x / 32;
-            int tileY = pos.y / 32;
+            // Integer division truncates toward zero, so x in [-31, -1] used to
+            // map to column 0 -- clicking just off the left/top edge revealed a
+            // tile. Anything negative is off the board, full stop.
+            int tileX = pos.x >= 0 ? pos.x / 32 : -1;
+            int tileY = pos.y >= 0 ? pos.y / 32 : -1;
 
             if (!board) return;
 

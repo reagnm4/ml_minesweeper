@@ -62,7 +62,7 @@ private:
 
     bool debugMode = false;
 
-    Leaderboard* leaderboard = nullptr;
+    std::unique_ptr<Leaderboard> leaderboard;
     GameState state = GameState::Playing;
 
 };
