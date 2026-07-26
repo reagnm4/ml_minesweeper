@@ -36,6 +36,9 @@ target_link_libraries(ms_nn PUBLIC ms_autograd)
 add_library(ms_train train/Dataset.cpp)
 target_link_libraries(ms_train PUBLIC ms_nn ms_solver)
 
+add_library(ms_rl rl/Env.cpp rl/Dqn.cpp)
+target_link_libraries(ms_rl PUBLIC ms_nn ms_engine)
+
 enable_testing()
 
 # Each gate is its own executable so it can be run and read in isolation.
@@ -50,6 +53,8 @@ ms_add_test(gate0_baseline   tests/gate0_baseline.cpp   ms_solver)
 ms_add_test(gate1_gradcheck  tests/gate1_gradcheck.cpp  ms_autograd)
 ms_add_test(gate2a_xor       tests/gate2a_xor.cpp       ms_nn)
 ms_add_test(gate2b_mines     tests/gate2b_mines.cpp     ms_train)
+ms_add_test(test_rl_components tests/test_rl_components.cpp ms_rl)
+ms_add_test(gate3_dqn        tests/gate3_dqn.cpp        ms_rl ms_solver)
 
 # Dumps gradients for tests/oracle/compare_oracle.sh to diff against NumPy.
 # Not a test itself -- it prints numbers, the shell script judges them.

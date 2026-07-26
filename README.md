@@ -27,6 +27,7 @@ gate, and every gate below currently passes.
 | **1** | Analytic vs numerical gradient, max relative error < 1e-6 | **2.13e-07** across every op, activation, loss and 3 end-to-end networks |
 | **2a** | XOR loss drops to near zero | **3.96e-30** with plain SGD; 10/10 seeds converge |
 | **2b** | Val accuracy beats majority baseline by a clear margin | **76.96% vs 62.32%** (+14.6 points) |
+| **3** | DQN win rate rises meaningfully above random | **14.3% vs 1.28%** random (11×) on 6×6/5, 5/5 seeds |
 
 ### Gate 0 — constraint-solver baseline
 
@@ -83,6 +84,60 @@ Two details that keep this honest:
 Some frontier cells are genuinely undecidable from local information, so there
 is an irreducible error floor well below 100%.
 
+### Gate 3 — Deep Q-Network
+
+6×6 with 5 mines. Both baselines were **measured, not assumed**, and the gate
+threshold — five times random — was fixed before any run so it could not be
+tuned to the result.
+
+| Policy | Win rate |
+|---|---|
+| random | 1.28% |
+| **DQN, 100k steps (~3 min)** | **14.3% mean over 5 seeds** — 11× random |
+| DQN, 250k steps (~8 min) | 17.0%, best eval 24.2% — 13× random |
+| Stage-0 solver | 76.10% |
+
+Across seeds 1, 7, 99, 12345 and 20240724 the settled win rate was 14.50, 14.97,
+14.13, 14.63 and 13.23% — every one at least 10.3× random. The gate is not
+resting on a lucky seed.
+
+State is the whole board one-hot encoded over 10 channels (0–8 revealed,
+unknown) — 360 inputs, 128 hidden, one Q-value per cell. Illegal actions are
+masked everywhere: in exploration, in the greedy argmax, and in the
+bootstrapped max over the next state.
+
+The DQN reuses `tensor/`, `autograd/`, `nn/` and `optim/` **completely
+unchanged** — no op was added for this stage. Updating only the action actually
+taken is expressed by building a regression target equal to the network's own
+prediction everywhere except that one entry, so the error, and therefore the
+gradient, is exactly zero elsewhere.
+
+**How the gate is measured, and why.** Evaluation plays 1000 games on a
+**fixed** seed, so movement in the win rate is the policy changing rather than
+the draw changing. Even so, consecutive evaluations swing by several points —
+16.8% and 24.2% are adjacent readings late in the 250k run. That is the "large
+reward jitter" the spec warns about, and it is not just noise in the
+measurement: the policy itself really is moving.
+
+An earlier version of this gate judged the single final evaluation over 500
+games, and one seed in four failed at 4.8× — below the 5× bar — despite having
+touched 9.2% two evaluations earlier. At a ~10% win rate a 500-game evaluation
+has a standard error of 1.3 points, so two readings of an *unchanged* policy can
+differ by 5 points. The fix was to tighten the measurement, not to lower the
+bar: 1000 games per evaluation, and the gate judged on the mean of the last
+three (3000 games of a settled policy). The 5× threshold is unchanged.
+
+The honest reading: 14% is 11× random and nowhere near the 76% solver, which is
+the expected outcome, not a disappointment. The spec says so up front —
+Minesweeper is NP-complete, constraint solvers with probabilistic guessing are
+the strongest known approach, and single-cell logic already extracts most of
+the locally available information. What Gate 3 demonstrates is *learning*, and
+the learning curve was still rising when training stopped.
+
+Because Gates 1 and 2 already passed, any failure here is provably in `rl/`
+rather than in the math. That property is the entire reason for the build
+order.
+
 ## Layout
 
 ```
@@ -93,7 +148,7 @@ autograd/  Reverse-mode graph, backward(), grad checking  (Stage 1)
 nn/        Dense layer, activations, MLP container        (Stage 2)
 optim/     SGD -> momentum -> Adam                        (Stage 2)
 train/     Dataset builder                                (Stage 2)
-rl/        (empty until Stage 3)
+rl/        Env encoding, reward, replay, DQN agent        (Stage 3)
 tests/     Per-stage gate checks
 src/       The original SFML game
 ```
@@ -109,6 +164,10 @@ cmake --build build -j
 cd build && ctest --output-on-failure
 ```
 
+Gates 0-2 finish in about 8 seconds; Gate 3 trains a DQN and takes about 3
+minutes, so it dominates the run. `ctest -E gate3` skips it. On Windows also
+pass `-E oracle` -- the NumPy cross-check is a bash script.
+
 `-DMS_BUILD_GUI=ON` (the default) additionally fetches SFML 3.0.2 and builds
 the game. Each gate is its own binary in `build/bin/` and can be read on its
 own:
@@ -116,6 +175,9 @@ own:
 ```bash
 ./build/bin/gate0_baseline    ./build/bin/gate1_gradcheck
 ./build/bin/gate2a_xor        ./build/bin/gate2b_mines
+./build/bin/test_rl_components
+./build/bin/gate3_dqn             # args: [steps=60000] [seed=20240724]
+./build/bin/gate3_dqn 250000     # the 17% run; takes about 8 minutes
 ```
 
 ## Design notes
